@@ -107,3 +107,19 @@ body.dr-open .a-drawer{transform:none}body.dr-open .a-ov{opacity:1;pointer-event
 }
 @media(max-width:520px){.d-grid{grid-template-columns:1fr}.a-actions{gap:.3rem}.btn.sm#logout{padding:.55rem .7rem}}
 @media print{body.adm>*{display:none!important}}
+
+/* ===== minimal type: Inter only ===== */
+body.adm{--serif:'Inter',system-ui,-apple-system,sans-serif;font-weight:400;letter-spacing:0;-webkit-font-smoothing:antialiased}
+.adm h1,.adm h2,.adm h3{font-weight:500;letter-spacing:-.01em}
+.adm em{font-style:normal}
+.login-card h1{font-size:1.7rem}
+.a-brand{font-size:1.05rem;font-weight:500;letter-spacing:-.005em}
+.a-brand small{font-size:.58rem;font-weight:500;letter-spacing:.22em}
+.st b{font-size:1.7rem;font-weight:500;letter-spacing:-.02em}
+.st span,.a-h,.chip,.d-sec h3,.pill,.badge2{font-weight:500}
+.d-h h2{font-size:1.35rem}
+.d-tot{font-size:1.2rem;font-weight:500}
+.empty-l{font-style:normal;font-size:1rem}
+.a-r .id{font-weight:500;letter-spacing:0}
+.btn{letter-spacing:.16em;font-weight:500}
+@media(max-width:820px){.a-r>:nth-child(5){font-family:var(--sans);font-size:1rem;font-weight:500}.st b{font-size:1.4rem}}
