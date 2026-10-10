@@ -1,12 +1,14 @@
 /**
  * Zoro Luna — order backend (Google Apps Script bound to a Google Sheet).
  * Setup steps are in SETUP.md. Secrets live in Script Properties, never in this file:
- *   ADMIN_KEY     – the password you type into the dashboard
- *   NOTIFY_EMAIL  – where new-order emails go (defaults to your Google account)
+ *   ADMIN_EMAIL     – the email you sign in to the dashboard with
+ *   ADMIN_PASSWORD  – your dashboard password (use a long one)
+ *   NOTIFY_EMAIL    – where new-order emails go (defaults to your Google account)
  */
 const SHEET = 'Orders';
 const HEAD = ['id', 'date', 'status', 'name', 'phone', 'email', 'addr', 'city', 'pin', 'state', 'pay', 'coupon', 'total', 'items', 'tracking', 'notes', 'updated'];
 const EDITABLE = ['status', 'name', 'phone', 'email', 'addr', 'city', 'pin', 'state', 'pay', 'coupon', 'total', 'tracking', 'notes'];
+const SESSION_DAYS = 30;
 const STATUSES = ['New', 'Confirmed', 'Packed', 'Shipped', 'Delivered', 'Cancelled', 'Returned'];
 
 function sheet_() {
@@ -17,6 +19,29 @@ function sheet_() {
 }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 function prop_(k) { return PropertiesService.getScriptProperties().getProperty(k); }
+function eq_(a, b) {                                   // constant-time compare
+  a = String(a == null ? '' : a); b = String(b == null ? '' : b);
+  if (a.length !== b.length) return false;
+  let r = 0; for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+function sessions_() { try { return JSON.parse(prop_('SESSIONS') || '{}'); } catch (e) { return {}; } }
+function saveSessions_(s) { PropertiesService.getScriptProperties().setProperty('SESSIONS', JSON.stringify(s)); }
+function validToken_(t) { if (!t) return false; const exp = sessions_()[t]; return !!exp && exp > Date.now(); }
+function login_(d) {
+  if (!prop_('ADMIN_EMAIL') || !prop_('ADMIN_PASSWORD')) return { ok: false, error: 'not configured' };
+  const cache = CacheService.getScriptCache(), fails = Number(cache.get('fails') || 0);
+  if (fails >= 8) return { ok: false, error: 'locked' };                 // 8 wrong tries -> 15 min lock
+  const okE = eq_(String(d.email || '').trim().toLowerCase(), String(prop_('ADMIN_EMAIL')).trim().toLowerCase());
+  const okP = eq_(d.password, prop_('ADMIN_PASSWORD'));
+  if (!(okE && okP)) { cache.put('fails', String(fails + 1), 900); Utilities.sleep(800); return { ok: false, error: 'invalid' }; }
+  cache.remove('fails');
+  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  const s = sessions_(), now = Date.now();
+  Object.keys(s).forEach(function (k) { if (s[k] < now) delete s[k]; });
+  s[token] = now + (d.remember ? SESSION_DAYS : 1) * 864e5; saveSessions_(s);
+  return { ok: true, token: token, expires: s[token] };
+}
 function clip_(v, n) { return String(v == null ? '' : v).slice(0, n); }
 function rows_() {
   const s = sheet_(), v = s.getDataRange().getValues();
@@ -52,8 +77,10 @@ function doPost(e) {
       notify_(o);
       return json_({ ok: true });
     }
-    // Everything else needs the admin key
-    if (!prop_('ADMIN_KEY') || d.key !== prop_('ADMIN_KEY')) return json_({ ok: false, error: 'unauthorized' });
+    if (d.action === 'login') return json_(login_(d));
+    if (d.action === 'logout') { const s = sessions_(); delete s[d.token]; saveSessions_(s); return json_({ ok: true }); }
+    // Everything else needs a valid signed-in session
+    if (!validToken_(d.token)) return json_({ ok: false, error: 'unauthorized' });
     if (d.action === 'list') return json_({ ok: true, orders: rows_() });
     if (d.action === 'update') {
       const r = findRow_(d.id); if (!r) return json_({ ok: false, error: 'not found' });

@@ -21,14 +21,15 @@
     <img src="img/logo.jpg" alt="" width="56" height="56">
     <h1>Zoro Luna <em class="gold">Orders</em></h1>
     <p class="sub">Sign in to manage your orders.</p>
-    <label class="fld">Backend URL<input id="l-api" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url"></label>
-    <label class="fld">Admin key<input id="l-key" type="password" autocomplete="current-password"></label>
-    <label class="chk-row"><input type="checkbox" id="l-rem" checked> Keep me signed in on this device</label>
+    <label class="fld" id="l-api-wrap">Backend URL<input id="l-api" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url"></label>
+    <label class="fld">Email<input id="l-email" type="email" autocomplete="username" placeholder="you@example.com" required></label>
+    <label class="fld pw">Password<input id="l-pass" type="password" autocomplete="current-password" required><button type="button" id="l-show" class="show">Show</button></label>
+    <label class="chk-row"><input type="checkbox" id="l-rem" checked> Keep me signed in for 30 days</label>
     <div class="msg" id="l-msg" role="alert"></div>
     <a class="note" id="l-test" target="_blank" rel="noopener" href="#" hidden style="text-decoration:underline;text-align:center">Open backend URL to test it</a>
-    <button class="btn solid block" type="submit">Sign in</button>
+    <button class="btn solid block" type="submit" id="l-go">Sign in</button>
     <button class="btn ghost block" type="button" id="l-demo">Try demo mode (sample data)</button>
-    <p class="note">Not set up yet? Follow <b>SETUP.md</b> — it takes about 10 minutes.</p>
+    <p class="note">Forgot your password? Change <b>ADMIN_PASSWORD</b> in your Apps Script project's Script properties.</p>
   </form>
 </section>
 

@@ -123,3 +123,7 @@ body.adm{--serif:'Inter',system-ui,-apple-system,sans-serif;font-weight:400;lett
 .a-r .id{font-weight:500;letter-spacing:0}
 .btn{letter-spacing:.16em;font-weight:500}
 @media(max-width:820px){.a-r>:nth-child(5){font-family:var(--sans);font-size:1rem;font-weight:500}.st b{font-size:1.4rem}}
+
+.fld.pw{position:relative}
+.fld.pw .show{position:absolute;right:.7rem;bottom:.55rem;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold2);padding:.3rem}
+.fld.pw input{padding-right:4.2rem}

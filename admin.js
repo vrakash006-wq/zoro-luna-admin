@@ -10,12 +10,12 @@ const store = {
   set(k, v, s = localStorage) { try { s.setItem(k, JSON.stringify(v)) } catch {} }
 };
 
-const S = { api: "", key: "", demo: false, orders: [], filter: "All", q: "", sel: null, known: null, seen: new Set(store.get("zl_adm_seen", [])), alerts: store.get("zl_adm_alerts", false), timer: null, busy: false };
+const S = { api: "", token: "", demo: false, orders: [], filter: "All", q: "", sel: null, known: null, seen: new Set(store.get("zl_adm_seen", [])), alerts: store.get("zl_adm_alerts", false), timer: null, busy: false };
 
 /* ---------- data layer ---------- */
 async function call(body) {
   let r;
-  try { r = await fetch(S.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, key: S.key }), redirect: "follow" }); }
+  try { r = await fetch(S.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, token: S.token }), redirect: "follow" }); }
   catch (e) { throw new Error("network"); }
   let j;
   try { j = await r.json(); } catch (e) { throw new Error("badreply"); }
@@ -23,10 +23,14 @@ async function call(body) {
   return j;
 }
 function explain(e) {
-  if (e.message === "unauthorized") return "Wrong admin key. It must match the ADMIN_KEY in your Script properties exactly.";
-  if (e.message === "network" || e.message === "badreply")
-    return "Couldn't reach the backend. Check: (1) the URL ends in /exec, (2) in Apps Script → Deploy → Manage deployments, “Who has access” is Anyone, (3) you ran setup once and approved permissions, (4) opening the URL in a new tab shows {\"ok\":true,…}. After editing the script, redeploy as a New version.";
-  return "Backend error: " + e.message;
+  const m = e.message;
+  if (m === "invalid") return "Incorrect email or password.";
+  if (m === "locked") return "Too many attempts. Try again in 15 minutes.";
+  if (m === "not configured") return "Backend isn't ready: add ADMIN_EMAIL and ADMIN_PASSWORD in the Apps Script project's Script properties, then redeploy.";
+  if (m === "unauthorized") return "Your session expired — please sign in again.";
+  if (m === "network" || m === "badreply")
+    return "Couldn't reach the backend. Check the URL ends in /exec, the deployment access is “Anyone”, and you've deployed the latest version of the script.";
+  return "Backend error: " + m;
 }
 const norm = o => ({
   id: String(o.id), date: o.date, status: STATUSES.includes(o.status) ? o.status : "New", name: o.name || "", phone: String(o.phone || ""), email: o.email || "",
@@ -65,33 +69,41 @@ async function saveFields(id, fields) {
 
 /* ---------- sign-in ---------- */
 function showApp(on) { $("#login").hidden = on; $("#app").hidden = !on; document.title = on ? "Orders — Zoro Luna Admin" : "Sign in — Zoro Luna Admin" }
-async function start(api, key, demoMode, remember) {
-  S.api = api; S.key = key; S.demo = demoMode;
-  try {
-    S.orders = await fetchOrders();
-  } catch (e) {
-    $("#l-msg").textContent = explain(e); showApp(false); return false;
-  }
-  if (remember) store.set("zl_adm_auth", { api, key, demo: demoMode });
-  else store.set("zl_adm_auth", { api, key, demo: demoMode }, sessionStorage);
+async function start(api, token, demoMode, remember, silent) {
+  S.api = api; S.token = token; S.demo = demoMode;
+  try { S.orders = await fetchOrders(); }
+  catch (e) { if (!silent || e.message !== "unauthorized") $("#l-msg").textContent = explain(e); showApp(false); return false; }
+  const pack = { api, token, demo: demoMode };
+  if (remember) store.set("zl_adm_auth", pack); else store.set("zl_adm_auth", pack, sessionStorage);
+  if (api) store.set("zl_adm_api", api);
   S.known = new Set(S.orders.map(o => o.id));
   $("#demoPill").hidden = !demoMode; $("#sim").hidden = !demoMode;
-  showApp(true); render(); setBell(); S.timer = setInterval(poll, POLL_MS); stamp();
+  showApp(true); render(); setBell(); clearInterval(S.timer); S.timer = setInterval(poll, POLL_MS); stamp();
   return true;
 }
-function logout() {
-  clearInterval(S.timer); try { localStorage.removeItem("zl_adm_auth"); sessionStorage.removeItem("zl_adm_auth") } catch {}
-  S.key = ""; S.orders = []; closeDr(); showApp(false);
+async function logout() {
+  clearInterval(S.timer);
+  if (!S.demo && S.token) { try { await call({ action: "logout" }) } catch {} }
+  try { localStorage.removeItem("zl_adm_auth"); sessionStorage.removeItem("zl_adm_auth") } catch {}
+  S.token = ""; S.orders = []; $("#l-pass").value = ""; closeDr(); showApp(false);
 }
-$("#lf").onsubmit = e => {
-  e.preventDefault(); $("#l-msg").textContent = "";
-  const api = $("#l-api").value.trim(), key = $("#l-key").value;
-  if (!/^https:\/\/script\.google\.com\/.+/.test(api)) { $("#l-msg").textContent = "Paste your Google Apps Script web-app URL."; return }
-  if (!key) { $("#l-msg").textContent = "Enter your admin key."; return }
-  start(api, key, false, $("#l-rem").checked);
+$("#lf").onsubmit = async e => {
+  e.preventDefault(); const msg = $("#l-msg"); msg.textContent = "";
+  const api = ($("#l-api").value || "").trim(), email = $("#l-email").value.trim(), password = $("#l-pass").value, remember = $("#l-rem").checked;
+  if (!/^https:\/\/script\.google\.com\/.+/.test(api)) { msg.textContent = "Paste your backend URL first (one time only)."; return }
+  const btn = $("#l-go"); btn.disabled = true; btn.textContent = "Signing in…";
+  try {
+    S.api = api; S.token = "";
+    const r = await call({ action: "login", email, password, remember });
+    store.set("zl_adm_email", email);
+    await start(api, r.token, false, remember);
+  } catch (err) { msg.textContent = explain(err) }
+  finally { btn.disabled = false; btn.textContent = "Sign in"; $("#l-pass").value = "" }
 };
-$("#l-api").oninput=()=>{const v=$("#l-api").value.trim();$("#l-test").hidden=!/^https:\/\/script\.google\.com\//.test(v);$("#l-test").href=v};
-$("#l-demo").onclick = () => start("", "", true, $("#l-rem").checked);
+$("#logout").onclick = logout;
+$("#l-show").onclick = () => { const p = $("#l-pass"); p.type = p.type === "password" ? "text" : "password"; $("#l-show").textContent = p.type === "password" ? "Show" : "Hide" };
+$("#l-api").oninput = () => { const v = $("#l-api").value.trim(); $("#l-test").hidden = !/^https:\/\/script\.google\.com\//.test(v); $("#l-test").href = v };
+$("#l-demo").onclick = () => start("", "", true, false);
 $("#logout").onclick = logout;
 
 /* ---------- render ---------- */
@@ -235,7 +247,7 @@ $("#bell").onclick = async () => {
   store.set("zl_adm_alerts", S.alerts); setBell();
 };
 async function poll(manual) {
-  if (S.busy || !S.key && !S.demo) return; S.busy = true;
+  if (S.busy || (!S.token && !S.demo)) return; S.busy = true;
   const btn = $("#refresh"); if (manual) btn.classList.add("spin");
   try {
     const fresh = await fetchOrders(), add = fresh.filter(o => !S.known.has(o.id));
@@ -248,7 +260,7 @@ async function poll(manual) {
       if (S.alerts) chime();
     }
     render(); if (S.sel && !add.length) { /* keep drawer as is */ } stamp();
-  } catch (e) { if (manual) toast("Couldn't refresh: " + e.message) }
+  } catch (e) { if (e.message === "unauthorized") { await logout(); $("#l-msg").textContent = explain(e) } else if (manual) toast("Couldn't refresh: " + e.message) }
   finally { S.busy = false; setTimeout(() => btn.classList.remove("spin"), 600) }
 }
 $("#refresh").onclick = () => poll(true);
@@ -267,7 +279,9 @@ $("#theme").onclick = () => { const d = document.documentElement.dataset.theme =
 
 /* ---------- boot ---------- */
 (function boot() {
-  $("#l-api").value = (typeof ORDERS_API !== "undefined" && ORDERS_API) || "";
+  const known = (typeof ORDERS_API !== "undefined" && ORDERS_API) || store.get("zl_adm_api", "");
+  $("#l-api").value = known; $("#l-api-wrap").hidden = !!((typeof ORDERS_API !== "undefined") && ORDERS_API);
+  $("#l-email").value = store.get("zl_adm_email", "");
   const a = store.get("zl_adm_auth", null) || store.get("zl_adm_auth", null, sessionStorage);
-  if (a) { $("#l-api").value = a.api || $("#l-api").value; start(a.api, a.key, !!a.demo, !!store.get("zl_adm_auth", null)) } else showApp(false);
+  if (a && (a.demo || (a.api && a.token))) { start(a.api, a.token, !!a.demo, !!store.get("zl_adm_auth", null), true) } else showApp(false);
 })();
