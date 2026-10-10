@@ -14,10 +14,19 @@ const S = { api: "", key: "", demo: false, orders: [], filter: "All", q: "", sel
 
 /* ---------- data layer ---------- */
 async function call(body) {
-  const r = await fetch(S.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, key: S.key }) });
-  const j = await r.json();
+  let r;
+  try { r = await fetch(S.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, key: S.key }), redirect: "follow" }); }
+  catch (e) { throw new Error("network"); }
+  let j;
+  try { j = await r.json(); } catch (e) { throw new Error("badreply"); }
   if (!j.ok) throw new Error(j.error || "request failed");
   return j;
+}
+function explain(e) {
+  if (e.message === "unauthorized") return "Wrong admin key. It must match the ADMIN_KEY in your Script properties exactly.";
+  if (e.message === "network" || e.message === "badreply")
+    return "Couldn't reach the backend. Check: (1) the URL ends in /exec, (2) in Apps Script → Deploy → Manage deployments, “Who has access” is Anyone, (3) you ran setup once and approved permissions, (4) opening the URL in a new tab shows {\"ok\":true,…}. After editing the script, redeploy as a New version.";
+  return "Backend error: " + e.message;
 }
 const norm = o => ({
   id: String(o.id), date: o.date, status: STATUSES.includes(o.status) ? o.status : "New", name: o.name || "", phone: String(o.phone || ""), email: o.email || "",
@@ -61,7 +70,7 @@ async function start(api, key, demoMode, remember) {
   try {
     S.orders = await fetchOrders();
   } catch (e) {
-    $("#l-msg").textContent = e.message === "unauthorized" ? "Wrong admin key." : "Couldn't reach the backend: " + e.message; showApp(false); return false;
+    $("#l-msg").textContent = explain(e); showApp(false); return false;
   }
   if (remember) store.set("zl_adm_auth", { api, key, demo: demoMode });
   else store.set("zl_adm_auth", { api, key, demo: demoMode }, sessionStorage);
@@ -81,6 +90,7 @@ $("#lf").onsubmit = e => {
   if (!key) { $("#l-msg").textContent = "Enter your admin key."; return }
   start(api, key, false, $("#l-rem").checked);
 };
+$("#l-api").oninput=()=>{const v=$("#l-api").value.trim();$("#l-test").hidden=!/^https:\/\/script\.google\.com\//.test(v);$("#l-test").href=v};
 $("#l-demo").onclick = () => start("", "", true, $("#l-rem").checked);
 $("#logout").onclick = logout;
 
