@@ -75,8 +75,7 @@ async function start(api, token, demoMode, remember, silent) {
   catch (e) { if (!silent || e.message !== "unauthorized") $("#l-msg").textContent = explain(e); showApp(false); return false; }
   const pack = { api, token, demo: demoMode };
   if (remember) store.set("zl_adm_auth", pack); else store.set("zl_adm_auth", pack, sessionStorage);
-  if (api) store.set("zl_adm_api", api);
-  S.known = new Set(S.orders.map(o => o.id));
+    S.known = new Set(S.orders.map(o => o.id));
   $("#demoPill").hidden = !demoMode; $("#sim").hidden = !demoMode;
   showApp(true); render(); setBell(); clearInterval(S.timer); S.timer = setInterval(poll, POLL_MS); stamp();
   return true;
@@ -89,8 +88,8 @@ async function logout() {
 }
 $("#lf").onsubmit = async e => {
   e.preventDefault(); const msg = $("#l-msg"); msg.textContent = "";
-  const api = ($("#l-api").value || "").trim(), email = $("#l-email").value.trim(), password = $("#l-pass").value, remember = $("#l-rem").checked;
-  if (!/^https:\/\/script\.google\.com\/.+/.test(api)) { msg.textContent = "Paste your backend URL first (one time only)."; return }
+  const api = (typeof ORDERS_API !== "undefined" && ORDERS_API) || "", email = $("#l-email").value.trim(), password = $("#l-pass").value, remember = $("#l-rem").checked;
+  if (!/^https:\/\/script\.google\.com\/.+/.test(api)) { msg.textContent = "The backend isn't connected yet. Set ORDERS_API in config.js (see SETUP.md), or use demo mode."; return }
   const btn = $("#l-go"); btn.disabled = true; btn.textContent = "Signing in…";
   try {
     S.api = api; S.token = "";
@@ -102,7 +101,6 @@ $("#lf").onsubmit = async e => {
 };
 $("#logout").onclick = logout;
 $("#l-show").onclick = () => { const p = $("#l-pass"); p.type = p.type === "password" ? "text" : "password"; $("#l-show").textContent = p.type === "password" ? "Show" : "Hide" };
-$("#l-api").oninput = () => { const v = $("#l-api").value.trim(); $("#l-test").hidden = !/^https:\/\/script\.google\.com\//.test(v); $("#l-test").href = v };
 $("#l-demo").onclick = () => start("", "", true, false);
 $("#logout").onclick = logout;
 
@@ -279,8 +277,6 @@ $("#theme").onclick = () => { const d = document.documentElement.dataset.theme =
 
 /* ---------- boot ---------- */
 (function boot() {
-  const known = (typeof ORDERS_API !== "undefined" && ORDERS_API) || store.get("zl_adm_api", "");
-  $("#l-api").value = known; $("#l-api-wrap").hidden = !!((typeof ORDERS_API !== "undefined") && ORDERS_API);
   $("#l-email").value = store.get("zl_adm_email", "");
   const a = store.get("zl_adm_auth", null) || store.get("zl_adm_auth", null, sessionStorage);
   if (a && (a.demo || (a.api && a.token))) { start(a.api, a.token, !!a.demo, !!store.get("zl_adm_auth", null), true) } else showApp(false);

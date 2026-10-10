@@ -19,12 +19,12 @@ get an **email for every new order**.
 3. Click **Deploy** and copy the **Web app URL** (ends in `/exec`).
 
 ## 3. Connect the store
-In the **store repo** (`zoro-luna`), open `config.js`, set `const ORDERS_API = "PASTE_THE_URL_HERE";` and push.
-New orders now land in the Sheet and you get an email.
+Put the URL in **both** repos' `config.js` as `const ORDERS_API = "PASTE_THE_URL_HERE";` and push:
+- the store (`zoro-luna`) — so checkout sends orders to your Sheet (you get an email for each one)
+- the dashboard (`zoro-luna-admin`) — so the sign-in page knows where to log in
 
 ## 4. Open the dashboard
-This site is the dashboard: `https://admin.zoroluna.shop`. Paste the same Web app URL once, then sign in with your `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
-(Optional: paste the URL into this repo's `config.js` too so the login box is pre-filled.)
+This site is the dashboard: `https://admin.zoroluna.shop`. Sign in with your `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 Turn on the 🔔 bell to get a sound + desktop notification while the dashboard tab is open.
 
 ### Good to know
