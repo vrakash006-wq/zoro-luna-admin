@@ -14,11 +14,13 @@ const S = { api: "", token: "", demo: false, orders: [], filter: "All", q: "", s
 
 /* ---------- data layer ---------- */
 async function call(body) {
-  let r;
-  try { r = await fetch(S.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, token: S.token }), redirect: "follow" }); }
-  catch (e) { throw new Error("network"); }
   let j;
-  try { j = await r.json(); } catch (e) { throw new Error("badreply"); }
+  for (let i = 0; i < 3; i++) {                       // Google occasionally returns a cold-start error page: retry
+    try {
+      const r = await fetch(S.api, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, token: S.token }), redirect: "follow" });
+      j = await r.json(); break;
+    } catch (e) { if (i === 2) throw new Error("network"); await new Promise(res => setTimeout(res, 700 * (i + 1))); }
+  }
   if (!j.ok) throw new Error(j.error || "request failed");
   return j;
 }
