@@ -32,3 +32,31 @@ Turn on the 🔔 bell to get a sound + desktop notification while the dashboard 
 - Anyone can *place* an order through the public endpoint (that is how checkout works). Totals are not
   re-calculated server-side, so check amounts before shipping.
 - If you change `Code.gs` later, use **Deploy → Manage deployments → ✏ → New version**.
+
+---
+
+## 5. Razorpay online payments (UPI, cards, netbanking)
+
+Customers who pick "UPI / Cards / Net banking" at checkout now pay through Razorpay's secure window.
+The order is priced on **Google's side** (from `https://zoroluna.shop/prices.json`), the payment is
+verified with Razorpay's signature, and the order is marked **Paid** in the dashboard automatically.
+
+1. In your Razorpay dashboard open **Account & Settings → API Keys → Generate Test Key**.
+   Copy the **Key Id** (`rzp_test_…`) and **Key Secret**.
+2. In Apps Script → **Project settings → Script properties** add
+   - `RAZORPAY_KEY_ID` = the key id
+   - `RAZORPAY_KEY_SECRET` = the key secret (never put this in the website or GitHub)
+3. Paste the latest `Code.gs`, choose the function **setup**, click **Run** and approve the new
+   permission ("connect to an external service").
+4. **Deploy → Manage deployments → ✏ → New version → Deploy.**
+5. Place a test order at https://zoroluna.shop and pay with Razorpay's test UPI `success@razorpay`
+   (or test card `4111 1111 1111 1111`, any future date, any CVV). It should show **Paid** in the dashboard.
+6. To go live: complete Razorpay's KYC/activation, generate **Live** keys, and replace the two script properties.
+   No website change is needed.
+
+If a customer pays but closes the tab before confirmation, open the order in the dashboard and click
+**Check payment with Razorpay** — it will mark the order Paid if the money arrived.
+
+### When you change a price or coupon
+Edit `site.js` in the store repo, run `node tools/build-prices.js`, and push both `site.js` and `prices.json`.
+The backend always charges from `prices.json`, so the customer can never pay a tampered price.

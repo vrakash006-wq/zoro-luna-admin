@@ -35,7 +35,8 @@ function explain(e) {
 const norm = o => ({
   id: String(o.id), date: o.date, status: STATUSES.includes(o.status) ? o.status : "New", name: o.name || "", phone: String(o.phone || ""), email: o.email || "",
   addr: o.addr || "", city: o.city || "", pin: String(o.pin || ""), state: o.state || "", pay: o.pay || "cod", coupon: o.coupon || "", total: +o.total || 0,
-  items: Array.isArray(o.items) ? o.items : [], tracking: o.tracking || "", notes: o.notes || ""
+  items: Array.isArray(o.items) ? o.items : [], tracking: o.tracking || "", notes: o.notes || "",
+  paystatus: o.paystatus || ((o.pay || "cod") === "cod" ? "COD" : "Pending"), payid: o.payid || ""
 });
 /* demo mode: orders placed in this browser by the storefront */
 const demo = {
@@ -113,7 +114,7 @@ const visible = () => {
 };
 function render() {
   const all = S.orders, today = new Date().toDateString();
-  const live = all.filter(o => !["Cancelled", "Returned"].includes(o.status));
+  const live = all.filter(o => !["Cancelled", "Returned"].includes(o.status) && (o.pay === "cod" || o.paystatus === "Paid"));
   const rev = live.reduce((s, o) => s + o.total, 0);
   const unseen = all.filter(o => o.status === "New" && !S.seen.has(o.id)).length;
   const st = [
@@ -136,7 +137,7 @@ function render() {
         <span class="id">${isNew ? '<i class="newdot"></i>' : ""}${esc(o.id)}</span><span>${esc(fmt(o.date))}</span>
         <span>${esc(o.name)}<small>${esc(o.city)}${o.state ? ", " + esc(o.state) : ""}</small></span>
         <span>${n} item${n === 1 ? "" : "s"}<small>${esc(o.items.map(l => l.n).join(", ")).slice(0, 60)}</small></span>
-        <span>${inr(o.total)}</span><span class="pay-b">${o.pay === "cod" ? "COD" : "Prepaid"}</span>
+        <span>${inr(o.total)}</span><span><span class="pay-b p-${o.paystatus}">${o.paystatus === "COD" ? "COD" : o.paystatus === "Paid" ? "Paid" : o.paystatus === "Refunded" ? "Refunded" : "Unpaid"}</span></span>
         <span><span class="badge2 s-${o.status}">${o.status}</span></span></div>`;
     }).join("") : `<div class="empty-l">${S.orders.length ? "No orders match." : "No orders yet — they'll appear here the moment they come in."}</div>`);
   const base = "Orders — Zoro Luna Admin"; document.title = unseen ? `(${unseen}) New orders — Zoro Luna` : base;
@@ -167,10 +168,14 @@ function openDr(id) {
   const idx = STATUSES.indexOf(o.status), bad = ["Cancelled", "Returned"].includes(o.status);
   const sub = o.items.reduce((s, l) => s + l.p * l.qty, 0);
   $("#dr").innerHTML = `
-  <div class="d-h"><div><h2>${esc(o.id)}</h2><small>${esc(fmt(o.date))} · ${o.pay === "cod" ? "Cash on delivery" : "Online payment"}</small></div><button class="ib" id="dClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div class="d-h"><div><h2>${esc(o.id)}</h2><small>${esc(fmt(o.date))} · ${o.pay === "cod" ? "Cash on delivery" : "Online (Razorpay)"}</small></div><button class="ib" id="dClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
   <div class="d-b">
     <div class="timeline" aria-hidden="true">${["New", "Confirmed", "Packed", "Shipped", "Delivered"].map((s, i) => `<i class="${bad ? "bad" : i <= idx ? "on" : ""}"></i>`).join("")}</div>
     <div class="d-sec"><h3>Status</h3><label class="fld"><select id="f-status">${STATUSES.map(s => `<option ${s === o.status ? "selected" : ""}>${s}</option>`).join("")}</select></label></div>
+    <div class="d-sec"><h3>Payment</h3><div class="d-grid">
+      <label class="fld">Payment status<select id="f-paystatus">${["COD", "Pending", "Paid", "Refunded"].map(s => `<option value="${s}" ${s === o.paystatus ? "selected" : ""}>${s === "Pending" ? "Unpaid" : s}</option>`).join("")}</select></label>
+      <label class="fld">Payment ID<input id="f-payid" value="${esc(o.payid)}" placeholder="pay_…"></label></div>
+      ${o.pay === "online" && o.paystatus !== "Paid" && !S.demo ? '<p class="note">Customer closed the payment window or it\'s still processing? <button class="btn ghost sm" id="rec" type="button">Check payment with Razorpay</button></p>' : ""}</div>
     <div class="d-sec d-items"><h3>Items</h3>
       ${o.items.map(l => `<div class="li"><div>${esc(l.n)}<small>Size ${esc(l.size)} · Qty ${esc(l.qty)} · ${inr(l.p)} each</small></div><div>${inr(l.p * l.qty)}</div></div>`).join("")}
       <div class="d-tot"><span>Total${o.coupon ? ` <small style="font-family:var(--sans);font-size:.7rem;color:var(--mute)">(code ${esc(o.coupon)})</small>` : ""}</span><span>${inr(o.total)}</span></div>
@@ -200,8 +205,14 @@ function openDr(id) {
   $("#f-tracking").oninput = $("#f-status").onchange;
   $("#cp").onclick = () => { const t = `${$("#f-name").value}\n${$("#f-phone").value}\n${$("#f-addr").value}, ${$("#f-city").value}, ${$("#f-state").value} ${$("#f-pin").value}`; (navigator.clipboard?.writeText(t) || Promise.reject()).then(() => toast("Address copied"), () => toast("Copy failed")) };
   $("#pr").onclick = () => printInvoice(o);
+  const rec = $("#rec");
+  if (rec) rec.onclick = async () => {
+    rec.disabled = true; rec.textContent = "Checking…";
+    try { const r = await call({ action: "reconcile", id }); if (r.paid) { Object.assign(o, { paystatus: "Paid", payid: r.payid, status: o.status === "New" ? "Confirmed" : o.status }); toast("Payment found — marked Paid"); render(); openDr(id) } else { toast("No payment received for this order yet"); rec.disabled = false; rec.textContent = "Check payment with Razorpay" } }
+    catch (e) { toast("Couldn't check: " + e.message); rec.disabled = false; rec.textContent = "Check payment with Razorpay" }
+  };
   $("#save").onclick = async () => {
-    const f = { status: $("#f-status").value, name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), email: $("#f-email").value.trim(), addr: $("#f-addr").value.trim(),
+    const f = { status: $("#f-status").value, paystatus: $("#f-paystatus").value, payid: $("#f-payid").value.trim(), name: $("#f-name").value.trim(), phone: $("#f-phone").value.trim(), email: $("#f-email").value.trim(), addr: $("#f-addr").value.trim(),
       city: $("#f-city").value.trim(), pin: $("#f-pin").value.trim(), state: $("#f-state").value.trim(), tracking: $("#f-tracking").value.trim(), notes: $("#f-notes").value.trim() };
     $("#save").disabled = true; $("#save").textContent = "Saving…";
     try { await saveFields(id, f); toast("Order updated"); render(); openDr(id) } catch (e) { toast("Couldn't save: " + e.message); $("#save").disabled = false; $("#save").textContent = "Save changes" }
@@ -219,7 +230,7 @@ function printInvoice(o) {
   const w = window.open("", "_blank"); if (!w) { toast("Allow pop-ups to print"); return }
   const sub = o.items.reduce((s, l) => s + l.p * l.qty, 0);
   w.document.write(`<!doctype html><title>Invoice ${esc(o.id)}</title><style>body{font:14px/1.5 Inter,Arial,sans-serif;max-width:720px;margin:30px auto;padding:0 20px;color:#222}h1{letter-spacing:.3em;font-weight:400;margin:0}table{width:100%;border-collapse:collapse;margin:20px 0}td,th{padding:8px;border-bottom:1px solid #ddd;text-align:left}td:last-child,th:last-child{text-align:right}.m{color:#666}</style>
-  <h1>ZORO LUNA</h1><p class="m">Moonlit luxury streetwear</p><hr><p><b>Order ${esc(o.id)}</b><br>${esc(fmt(o.date))} · ${o.pay === "cod" ? "Cash on delivery" : "Paid online"}</p>
+  <h1>ZORO LUNA</h1><p class="m">Moonlit luxury streetwear</p><hr><p><b>Order ${esc(o.id)}</b><br>${esc(fmt(o.date))} · ${o.pay === "cod" ? "Cash on delivery" : o.paystatus === "Paid" ? "Paid online" : "Payment pending"}</p>
   <p><b>Ship to</b><br>${esc(o.name)}<br>${esc(o.addr)}<br>${esc(o.city)}, ${esc(o.state)} ${esc(o.pin)}<br>${esc(o.phone)}</p>
   <table><tr><th>Item</th><th>Size</th><th>Qty</th><th>Amount</th></tr>${o.items.map(l => `<tr><td>${esc(l.n)}</td><td>${esc(l.size)}</td><td>${esc(l.qty)}</td><td>${inr(l.p * l.qty)}</td></tr>`).join("")}
   <tr><td colspan="3">Items subtotal</td><td>${inr(sub)}</td></tr><tr><td colspan="3"><b>Total ${o.pay === "cod" ? "to collect" : "paid"}</b></td><td><b>${inr(o.total)}</b></td></tr></table>
@@ -268,7 +279,7 @@ $("#sim").onclick = () => { demo.add(); poll(true) };
 /* ---------- export + theme ---------- */
 $("#csv").onclick = () => {
   const rows = visible(); if (!rows.length) { toast("Nothing to export"); return }
-  const cols = ["id", "date", "status", "name", "phone", "email", "addr", "city", "pin", "state", "pay", "coupon", "total", "items", "tracking", "notes"];
+  const cols = ["id", "date", "status", "name", "phone", "email", "addr", "city", "pin", "state", "pay", "paystatus", "payid", "coupon", "total", "items", "tracking", "notes"];
   const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
   const csv = [cols.join(","), ...rows.map(o => cols.map(c => q(c === "items" ? o.items.map(l => `${l.n} (${l.size}) x${l.qty}`).join("; ") : o[c])).join(","))].join("\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" })); a.download = `zoro-luna-orders-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(a.href);

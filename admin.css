@@ -127,3 +127,6 @@ body.adm{--serif:'Inter',system-ui,-apple-system,sans-serif;font-weight:400;lett
 .fld.pw{position:relative}
 .fld.pw .show{position:absolute;right:.7rem;bottom:.55rem;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--gold2);padding:.3rem}
 .fld.pw input{padding-right:4.2rem}
+
+.p-Paid{color:#3e8a4f}.p-Pending{color:#b9791f}.p-COD{color:var(--mute)}.p-Refunded{color:#a9473a}
+.pay-b{font-weight:500}
