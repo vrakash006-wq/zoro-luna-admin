@@ -45,18 +45,32 @@
   </header>
 
   <main class="a-wrap">
-    <div class="a-stats" id="stats"></div>
+    <nav class="a-tabs" id="vtabs" aria-label="Sections">
+      <button data-v="overview">Overview</button>
+      <button data-v="orders" class="on">Orders <em id="n-orders"></em></button>
+      <button data-v="abandoned">Abandoned <em id="n-ab"></em></button>
+      <button data-v="sessions">Visitors <em id="n-live"></em></button>
+      <button data-v="customers">Customers</button>
+    </nav>
 
-    <div class="a-bar">
-      <input class="a-search" id="q" type="search" placeholder="Search order ID, name, phone, city…" aria-label="Search orders">
-      <div class="a-bar-r">
-        <button class="btn ghost sm" id="sim" hidden>+ Test order</button>
-        <button class="btn ghost sm" id="csv">Export CSV</button>
+    <section class="view" id="v-overview" hidden></section>
+
+    <section class="view" id="v-orders">
+      <div class="a-stats" id="stats"></div>
+      <div class="a-bar">
+        <input class="a-search" id="q" type="search" placeholder="Search order ID, name, phone, city…" aria-label="Search orders">
+        <div class="a-bar-r">
+          <button class="btn ghost sm" id="sim" hidden>+ Test data</button>
+          <button class="btn ghost sm" id="csv">Export CSV</button>
+        </div>
       </div>
-    </div>
-    <div class="a-chips" id="chips"></div>
+      <div class="a-chips" id="chips"></div>
+      <div class="a-list" id="list" role="table" aria-label="Orders"></div>
+    </section>
 
-    <div class="a-list" id="list" role="table" aria-label="Orders"></div>
+    <section class="view" id="v-abandoned" hidden></section>
+    <section class="view" id="v-sessions" hidden></section>
+    <section class="view" id="v-customers" hidden></section>
   </main>
 
   <div class="a-ov" id="ov"></div>
@@ -66,5 +80,6 @@
 <div class="toast" id="toast" role="status"></div>
 <script src="config.js"></script>
 <script src="admin.js"></script>
+<script src="admin-extra.js"></script>
 </body>
 </html>

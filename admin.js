@@ -10,7 +10,7 @@ const store = {
   set(k, v, s = localStorage) { try { s.setItem(k, JSON.stringify(v)) } catch {} }
 };
 
-const S = { api: "", token: "", demo: false, orders: [], filter: "All", q: "", sel: null, known: null, seen: new Set(store.get("zl_adm_seen", [])), alerts: store.get("zl_adm_alerts", false), timer: null, busy: false };
+const S = { sessions: [], prices: null, view: "orders", api: "", token: "", demo: false, orders: [], filter: "All", q: "", sel: null, known: null, seen: new Set(store.get("zl_adm_seen", [])), alerts: store.get("zl_adm_alerts", false), timer: null, busy: false };
 
 /* ---------- data layer ---------- */
 async function call(body) {
@@ -42,6 +42,21 @@ const norm = o => ({
 });
 /* demo mode: orders placed in this browser by the storefront */
 const demo = {
+  sessions() { return store.get("zl_adm_dsess", []) },
+  addSessions() {
+    const L = store.get("zl_adm_dsess", []), now = Date.now(), pick = a => a[Math.floor(Math.random() * a.length)];
+    const names = ["Aarav Mehta", "Diya Nair", "Kabir Singh", "Meera Iyer", "", "", ""], src = ["instagram", "google", "direct", "whatsapp", "facebook"];
+    for (let i = 0; i < 4; i++) {
+      const stage = pick(["visit", "product", "cart", "checkout", "contact", "contact"]), nm = pick(names), cartItems = stage === "visit" || stage === "product" ? [] : [{ id: pick([1, 5, 17, 13]), size: pick(["S", "M", "L"]), qty: 1 }];
+      const age = pick([2, 12, 45, 90, 400, 1500]) * 60000;
+      L.push({ sid: "demo" + now + i, vid: "v" + Math.floor(Math.random() * 99999), first: new Date(now - age - 240000).toISOString(), last: new Date(now - age).toISOString(), device: pick(["mobile", "mobile", "desktop", "tablet"]),
+        browser: pick(["Chrome", "Safari", "Edge"]), os: pick(["Android", "iOS", "Windows", "macOS"]), tz: "Asia/Kolkata", source: pick(src), medium: "referral", campaign: "", landing: "/", pages: 2 + Math.floor(Math.random() * 7),
+        viewed: [1, 5, 17].slice(0, 1 + Math.floor(Math.random() * 3)), cartValue: cartItems.length ? 1399 + Math.floor(Math.random() * 1500) : 0, cart: cartItems, stage,
+        name: stage === "contact" ? nm : "", email: stage === "contact" && nm ? "demo@example.com" : "", phone: stage === "contact" && nm ? "98765" + (10000 + Math.floor(Math.random() * 89999)) : "", order: "", followup: "", note: "" });
+    }
+    store.set("zl_adm_dsess", L.slice(-60));
+  },
+  updateSession(sid, f) { const L = store.get("zl_adm_dsess", []), s = L.find(x => x.sid === sid); if (s) Object.assign(s, f); store.set("zl_adm_dsess", L) },
   list() {
     const edits = store.get("zl_adm_demo", {}), gone = store.get("zl_adm_gone", []);
     return store.get("zl_orders", []).filter(o => !gone.includes(o.id)).map(o => {
@@ -62,8 +77,12 @@ const demo = {
   }
 };
 async function fetchOrders() {
-  if (S.demo) return demo.list();
-  return (await call({ action: "list" })).orders.map(norm);
+  if (S.demo) { S.sessions = demo.sessions(); return demo.list(); }
+  let r;
+  try { r = await call({ action: "listAll" }); }
+  catch (e) { if (e.message === "unknown action") { r = await call({ action: "list" }); r.sessions = []; } else throw e; }
+  S.sessions = r.sessions || [];
+  return r.orders.map(norm);
 }
 async function saveFields(id, fields) {
   if (S.demo) demo.update(id, fields); else await call({ action: "update", id, fields });
@@ -143,6 +162,7 @@ function render() {
         <span><span class="badge2 s-${o.status}">${o.status}</span></span></div>`;
     }).join("") : `<div class="empty-l">${S.orders.length ? "No orders match." : "No orders yet — they'll appear here the moment they come in."}</div>`);
   const base = "Orders — Zoro Luna Admin"; document.title = unseen ? `(${unseen}) New orders — Zoro Luna` : base;
+  if (window.renderExtra) renderExtra();
 }
 $("#chips").onclick = e => { const c = e.target.closest("[data-c]"); if (c) { S.filter = c.dataset.c; render() } };
 $("#q").oninput = e => { S.q = e.target.value; render() };
@@ -276,7 +296,7 @@ async function poll(manual) {
 }
 $("#refresh").onclick = () => poll(true);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("#app").hidden) poll() });
-$("#sim").onclick = () => { demo.add(); poll(true) };
+$("#sim").onclick = () => { demo.add(); demo.addSessions(); poll(true) };
 
 /* ---------- export + theme ---------- */
 $("#csv").onclick = () => {

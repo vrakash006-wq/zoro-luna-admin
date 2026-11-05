@@ -12,6 +12,10 @@ const SHEET = 'Orders';
 const HEAD = ['id', 'date', 'status', 'name', 'phone', 'email', 'addr', 'city', 'pin', 'state', 'pay', 'coupon', 'total', 'items', 'tracking', 'notes', 'updated', 'paystatus', 'payid', 'rzp'];
 const EDITABLE = ['status', 'name', 'phone', 'email', 'addr', 'city', 'pin', 'state', 'pay', 'coupon', 'total', 'tracking', 'notes', 'paystatus', 'payid'];
 const PAYSTATUS = ['COD', 'Pending', 'Paid', 'Refunded'];
+const SESS = 'Sessions';
+const SHEAD = ['sid', 'vid', 'first', 'last', 'device', 'browser', 'os', 'tz', 'source', 'medium', 'campaign', 'landing', 'pages', 'viewed', 'cartValue', 'cart', 'stage', 'name', 'email', 'phone', 'order', 'followup', 'note'];
+const STAGES = ['visit', 'product', 'cart', 'checkout', 'contact', 'ordered'];
+const FOLLOWUP = ['', 'Contacted', 'Recovered', 'Ignored'];
 const SESSION_DAYS = 30;
 const STATUSES = ['New', 'Confirmed', 'Packed', 'Shipped', 'Delivered', 'Cancelled', 'Returned'];
 
@@ -128,10 +132,67 @@ function markPaid_(r, payId) {
   notify_({ id: o.id, name: o.name, phone: o.phone, email: o.email, addr: o.addr, city: o.city, pin: o.pin, state: o.state, pay: 'online', total: o.total, items: o.items }, 'Payment received');
 }
 
+/* ---------- visitor sessions + abandoned checkouts ---------- */
+function sessSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let s = ss.getSheetByName(SESS);
+  if (!s) { s = ss.insertSheet(SESS); s.appendRow(SHEAD); s.setFrozenRows(1); }
+  return s;
+}
+function trackEvent_(d) {                                   // public, best-effort analytics
+  const s = d.s || {}, sid = clip_(s.sid, 40);
+  if (!/^[A-Za-z0-9-]{8,40}$/.test(sid)) return;
+  const lock = LockService.getScriptLock(); if (!lock.tryLock(4000)) return;
+  try {
+    const sh = sessSheet_(), last = sh.getLastRow();
+    const f = last > 1 ? sh.getRange(2, 1, last - 1, 1).createTextFinder(sid).matchEntireCell(true).findNext() : null;
+    const now = new Date().toISOString();
+    const inc = {
+      sid: sid, vid: clip_(s.vid, 40), first: clip_(s.first, 40), last: now, device: clip_(s.device, 12), browser: clip_(s.browser, 20), os: clip_(s.os, 20),
+      tz: clip_(s.tz, 40), source: clip_(s.source, 60), medium: clip_(s.medium, 40), campaign: clip_(s.campaign, 60), landing: clip_(s.landing, 80),
+      pages: Math.min(500, Number(s.pages) || 0), viewed: JSON.stringify((s.viewed || []).slice(0, 20).map(Number)),
+      cartValue: Number(s.cartValue) || 0, cart: JSON.stringify((s.cart || []).slice(0, 20).map(function (i) { return { id: Number(i.id), size: clip_(i.size, 5), qty: Math.min(10, Number(i.qty) || 1) }; })),
+      stage: STAGES.indexOf(s.stage) >= 0 ? s.stage : 'visit', name: clip_((s.contact || {}).name, 80), email: clip_((s.contact || {}).email, 120),
+      phone: clip_((s.contact || {}).phone, 15), order: clip_(s.order, 20), followup: '', note: ''
+    };
+    if (f) {
+      const row = f.getRow(), old = sh.getRange(row, 1, 1, SHEAD.length).getValues()[0], out = [];
+      SHEAD.forEach(function (h, i) {
+        let v = inc[h];
+        if (h === 'first' || h === 'followup' || h === 'note') v = old[i];
+        else if (h === 'stage') v = STAGES.indexOf(inc.stage) > STAGES.indexOf(old[i]) ? inc.stage : (old[i] || inc.stage);
+        else if (h === 'name' || h === 'email' || h === 'phone' || h === 'order') v = v || old[i];
+        else if (h === 'pages') v = Math.max(Number(old[i]) || 0, v);
+        out.push(v === undefined ? old[i] : v);
+      });
+      sh.getRange(row, 1, 1, SHEAD.length).setValues([out]);
+    } else {
+      sh.appendRow(SHEAD.map(function (h) { return inc[h] === undefined ? '' : inc[h]; }));
+    }
+  } finally { lock.releaseLock(); }
+}
+function trackRows_() {
+  const sh = sessSheet_(), n = sh.getLastRow(); if (n < 2) return [];
+  const from = Math.max(2, n - 799), v = sh.getRange(from, 1, n - from + 1, SHEAD.length).getValues();
+  return v.map(function (r, i) {
+    const o = { _row: from + i }; SHEAD.forEach(function (h, k) { o[h] = r[k] instanceof Date ? r[k].toISOString() : r[k]; });
+    try { o.viewed = JSON.parse(o.viewed || '[]'); } catch (e) { o.viewed = []; }
+    try { o.cart = JSON.parse(o.cart || '[]'); } catch (e) { o.cart = []; }
+    o.phone = String(o.phone || ''); delete o.vidx; return o;
+  }).reverse();
+}
+/** Optional: add a daily time-driven trigger for this to keep the Sessions sheet small (deletes rows older than 90 days). */
+function pruneSessions() {
+  const sh = sessSheet_(), n = sh.getLastRow(); if (n < 2) return;
+  const cutoff = Date.now() - 90 * 864e5, v = sh.getRange(2, 4, n - 1, 1).getValues();
+  for (let i = v.length - 1; i >= 0; i--) { const t = new Date(v[i][0]).getTime(); if (t && t < cutoff) sh.deleteRow(i + 2); }
+}
+
 /* ---------- web app ---------- */
 function doPost(e) {
   let d;
   try { d = JSON.parse(e.postData.contents); } catch (err) { return json_({ ok: false, error: 'bad json' }); }
+  if (d.action === 'track') { try { trackEvent_(d); } catch (e) {} return json_({ ok: true }); }
   const lock = LockService.getScriptLock(); lock.waitLock(25000);
   try {
     /* ---- public: customers ---- */
@@ -171,6 +232,16 @@ function doPost(e) {
     if (d.action === 'logout') { const s = sessions_(); delete s[d.token]; saveSessions_(s); return json_({ ok: true }); }
     if (!validToken_(d.token)) return json_({ ok: false, error: 'unauthorized' });
     if (d.action === 'list') return json_({ ok: true, orders: rows_() });
+    if (d.action === 'listAll') return json_({ ok: true, orders: rows_(), sessions: trackRows_() });
+    if (d.action === 'sessionUpdate') {
+      const sh = sessSheet_(), last = sh.getLastRow();
+      const f = last > 1 ? sh.getRange(2, 1, last - 1, 1).createTextFinder(String(d.sid)).matchEntireCell(true).findNext() : null;
+      if (!f) return json_({ ok: false, error: 'not found' });
+      const fl = d.fields || {};
+      if (fl.followup !== undefined && FOLLOWUP.indexOf(fl.followup) >= 0) sh.getRange(f.getRow(), SHEAD.indexOf('followup') + 1).setValue(fl.followup);
+      if (fl.note !== undefined) sh.getRange(f.getRow(), SHEAD.indexOf('note') + 1).setValue(clip_(fl.note, 300));
+      return json_({ ok: true });
+    }
     if (d.action === 'update') {
       const r = findRow_(d.id); if (!r) return json_({ ok: false, error: 'not found' });
       const f = d.fields || {};
@@ -213,6 +284,6 @@ function notify_(o, subjectPrefix) {
 
 /** Run once from the editor to authorise Sheets, Mail and web requests (Razorpay). */
 function setup() {
-  sheet_(); MailApp.getRemainingDailyQuota();
+  sheet_(); sessSheet_(); MailApp.getRemainingDailyQuota();
   UrlFetchApp.fetch(prop_('PRICES_URL') || 'https://zoroluna.shop/prices.json', { muteHttpExceptions: true });
 }

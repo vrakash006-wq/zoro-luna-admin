@@ -60,3 +60,27 @@ If a customer pays but closes the tab before confirmation, open the order in the
 ### When you change a price or coupon
 Edit `site.js` in the store repo, run `node tools/build-prices.js`, and push both `site.js` and `prices.json`.
 The backend always charges from `prices.json`, so the customer can never pay a tampered price.
+
+---
+
+## 6. Visitors, abandoned checkouts and analytics
+
+The store now sends one small anonymous record per visit (pages seen, device, where the visitor came from,
+what is in their bag). If someone types their name, phone or email at checkout, that is saved too so you can
+follow up. They land in a **Sessions** sheet in the same Google Sheet and appear in the dashboard tabs:
+
+| Tab | What you see |
+|---|---|
+| **Overview** | visitors today, live now, conversion %, revenue, funnel (visit → product → bag → checkout → order), traffic sources, best sellers, order pipeline |
+| **Orders** | every order, status, payment, tracking, notes (as before) |
+| **Abandoned** | bags left unfinished for 30+ min, with contact details, one-click **WhatsApp / Email** recovery, a link that refills the customer's bag, and follow-up status |
+| **Visitors** | every session: device, browser, source, landing page, pages viewed, bag value, stage reached |
+| **Customers** | repeat buyers, lifetime spend, CSV export |
+
+After updating `Code.gs`: run **setup** once, then **Deploy → Manage deployments → ✏ → New version → Deploy**.
+
+- Visitors with "Do Not Track" turned on are not recorded.
+- The checkout page and Care page tell customers that their details are saved (privacy notice).
+- Optional: in Apps Script open **Triggers → Add trigger**, choose `pruneSessions`, *Time-driven → Day timer*,
+  to delete visit records older than 90 days.
+- Product names in the dashboard come from `https://zoroluna.shop/prices.json`.
